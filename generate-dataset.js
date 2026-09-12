@@ -26,10 +26,12 @@
  *   2. Copia .env.example a .env y pon tu NESSIE_API_KEY
  *   3. node generate_dataset.js
  *
- * Historial por defecto: 365 días (~12 meses), siguiendo la recomendación de
- * 6-12 meses mínimo para SARIMAX/TBATS (2-3 ciclos completos de estacionalidad).
- * Esto implica ~365-500 llamadas POST a la API — con el rate limiting del
- * script (120ms entre llamadas) tarda aprox. 1-2 minutos en correr.
+ * Historial: definido por DAYS_HISTORY en .env. Recomendación de Azucena:
+ * 6-12 meses mínimo para SARIMAX/TBATS, 1-2 años ideal para LightGBM. Es
+ * seguro subir DAYS_HISTORY y volver a correr el script las veces que
+ * quieras: antes de sembrar, revisa qué días ya tienen un depósito creado
+ * y se salta esos — solo agrega los días nuevos (más viejos) que falten,
+ * así nunca duplica lo que ya sembraste en una corrida anterior.
  *
  * Salida:
  *   dataset_transactions.csv  — una fila por transacción (deposit/purchase/bill)
@@ -216,18 +218,37 @@ async function getOrCreateMerchant() {
 
 // ---------- paso 4: generar y sembrar transacciones ----------
 
+async function getAlreadySeededDates(checkingId) {
+  const { data: deposits } = await withRetry(
+    () => client.get(`/accounts/${checkingId}/deposits`, { params: { key: API_KEY } }),
+    'GET deposits (check existentes)'
+  );
+  return new Set(deposits.map((d) => d.transaction_date));
+}
+
 async function seedTransactions(checkingId, merchantId) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const start = new Date(today);
   start.setDate(start.getDate() - DAYS_HISTORY);
 
+  console.log('Revisando qué días ya tienen datos sembrados (para no duplicar)...');
+  const alreadySeeded = await getAlreadySeededDates(checkingId);
+  console.log(`${alreadySeeded.size} días ya sembrados previamente — se van a saltar.`);
+
   let lastPurchaseDate = new Date(start);
+  let skipped = 0;
 
   for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
     const date = new Date(d);
     const dow = date.getDay();
     const dateStr = fmtDate(date);
+
+    if (alreadySeeded.has(dateStr)) {
+      skipped++;
+      if (skipped % 50 === 0) console.log(`(saltados ${skipped} días ya existentes...)`);
+      continue;
+    }
 
     // --- Deposit: ventas agregadas del día ---
     // Perfil minisúper: 60-150 depósitos/día, ticket $40-120 MXN => venta diaria total ~$3,500-11,000
