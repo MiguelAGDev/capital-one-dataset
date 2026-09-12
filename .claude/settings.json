@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/proyectos/capital-one/**)",
+      "Read(//c/proyectos/**)",
+      "Bash(ls -la \"/c/proyectos/capital-one/capital-one-dataset\")",
+      "Read(//c/proyectos/capital-one/capital-one-dataset/**)",
+      "Bash(mv .claude .env dataset_daily.csv dataset_transactions.csv generate-dataset.js node_modules package-lock.json package.json \"../capital-one-dataset/\")"
+    ]
+  }
+}
